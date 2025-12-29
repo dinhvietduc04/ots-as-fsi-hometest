@@ -71,7 +71,7 @@ cat /var/optisign-data/log/delta_log.json
 1. **Data Crawling** (`data-crawl.py`): Fetches ≤40 articles from OptiSign Zendesk API
 2. **Delta Detection** (`main.py`): Compares hashes, identifies new/updated articles
 3. **Vector Store Upload** (`upload_to_vector_store.py`): Uploads only changed files to OpenAI
-4. **Daily Scheduling**: Docker + cron on DigitalOcean (runs once per day)
+4. **Daily Scheduling**: Runs automatically at **9:00 AM UTC+7 (Bangkok time)** once per day on DigitalOcean
 
 ## Using in OpenAI Playground
 

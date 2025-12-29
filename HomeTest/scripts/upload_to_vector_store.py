@@ -9,7 +9,18 @@ from openai import OpenAI
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Initialize client (will validate at runtime)
+def get_client():
+    """Get OpenAI client, validating API key is set."""
+    if not OPENAI_API_KEY:
+        raise RuntimeError(
+            "❌ OPENAI_API_KEY environment variable is not set. "
+            "Please set it in DigitalOcean App Platform settings."
+        )
+    return OpenAI(api_key=OPENAI_API_KEY)
+
+client = None  # Lazy initialized
 
 # Configuration - use root-relative paths
 ARTICLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "articles")
@@ -60,25 +71,6 @@ def delete_file_from_vector_store(vector_store_id, file_id):
     except Exception as e:
         print(f"  ✗ Error removing from vector store: {e}")
         return False
-
-def chunk_text_generator(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    """Generate text chunks one at a time (memory efficient)."""
-    start = 0
-    
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        
-        # Try to break at sentence boundary
-        if end < len(text):
-            last_period = text.rfind('. ', start, end)
-            if last_period != -1:
-                end = last_period + 2
-        
-        chunk = text[start:end].strip()
-        if chunk:
-            yield chunk
-        
-        start = end - overlap if end < len(text) else end
 
 def create_or_get_vector_store(name):
     """Create or get existing vector store via OpenAI API."""
@@ -138,67 +130,15 @@ def add_file_to_vector_store(vector_store_id, file_id):
         return None
 
 
-def create_or_get_vector_store(name):
-    """Create or get existing vector store via OpenAI API."""
-    try:
-        # First, try to list existing vector stores
-        response = requests.get(
-            "https://api.openai.com/v1/vector_stores",
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "OpenAI-Beta": "assistants=v2"
-            }
-        )
-        response.raise_for_status()
-        vector_stores = response.json()
-        
-        # Look for existing vector store with matching name
-        for vs in vector_stores.get("data", []):
-            if vs.get("name") == name:
-                print(f"✓ Found existing vector store: {vs['id']}")
-                return vs
-        
-        # If not found, create a new one
-        print(f"Creating new vector store...")
-        response = requests.post(
-            "https://api.openai.com/v1/vector_stores",
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-                "OpenAI-Beta": "assistants=v2"
-            },
-            json={"name": name}
-        )
-        response.raise_for_status()
-        vs_data = response.json()
-        print(f"✓ Created new vector store: {vs_data['id']}")
-        return vs_data
-    except Exception as e:
-        print(f"✗ Error with vector store: {e}")
-        return None
-
-def add_file_to_vector_store(vector_store_id, file_id):
-    """Add a file to the vector store."""
-    try:
-        response = requests.post(
-            f"https://api.openai.com/v1/vector_stores/{vector_store_id}/files",
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-                "OpenAI-Beta": "assistants=v2"
-            },
-            json={"file_id": file_id}
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        print(f"  ✗ Error adding file to vector store: {e}")
-        return None
-
 def upload_articles():
     """Upload new and updated articles to vector store."""
     import glob
     import time
+    
+    # Initialize client
+    global client
+    if client is None:
+        client = get_client()
     
     # Load metadata
     metadata = load_metadata()

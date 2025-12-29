@@ -27,8 +27,8 @@ ARTICLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "article
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "log")
 METADATA_FILE = os.path.join(ARTICLES_DIR, "metadata.json")
 VECTOR_STORE_NAME = "optisign-help-center"
-CHUNK_SIZE = 1000  # Characters per chunk
-CHUNK_OVERLAP = 150  # Overlap between chunks
+CHUNK_SIZE = 1500  # Characters per chunk (larger to preserve URL with content)
+CHUNK_OVERLAP = 300  # Increased overlap (20% of chunk) to ensure metadata appears in all chunks
 
 def load_metadata():
     """Load metadata about articles."""

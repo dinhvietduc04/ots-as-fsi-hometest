@@ -121,9 +121,10 @@ while url and crawled_count < 40:
         path = os.path.join(OUT, category, f"{slug}.md")
         
         with open(path, "w", encoding="utf-8") as f:
-            f.write(f"# {article['title']}\n\n")
+            # Write header and source URL at TOP (ensures it's preserved during chunking)
+            f.write(f"# {article['title']}\n")
+            f.write(f"**Source:** {article['html_url']}\n\n")
             f.write(markdown_content)
-            f.write(f"\n\n---\n**Source:** {article['html_url']}")
         
         # Update metadata
         metadata[article_id] = {

@@ -3,10 +3,8 @@ from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 import os
 import re
-import json
 import hashlib
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -15,7 +13,7 @@ load_dotenv()
 # MongoDB connection
 MONGO_USERNAME = os.getenv("MONGO_USERNAME")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
-MONGO_HOST = os.getenv("MONGO_HOST", "mongodb+srv://db-mongodb-dailyjob-effc3b38.mongo.ondigitalocean.com")
+MONGO_HOST = os.getenv("MONGO_HOST")
 MONGO_DATABASE = os.getenv("MONGO_DATABASE")
 
 def get_mongo_client():
@@ -40,6 +38,10 @@ os.makedirs(os.path.join(OUT, "updated"), exist_ok=True)
 
 def slugify(text):
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
+
+def get_content_hash(content):
+    """Get SHA256 hash of content."""
+    return hashlib.sha256(content.encode()).hexdigest()
 
 def load_metadata():
     """Load metadata about previously crawled articles from MongoDB."""
@@ -80,31 +82,8 @@ def is_first_run():
     except:
         return True
 
-def get_content_hash(content):
-    """Get SHA256 hash of content."""
-    return hashlib.sha256(content.encode()).hexdigest()
-
-def should_crawl_article(article, is_first):
-    """Determine if article should be crawled based on update time."""
-    if is_first:
-        # First run: crawl everything
-        return True
-    
-    # Subsequent runs: only crawl if modified in last 24 hours
-    updated_at = datetime.fromisoformat(article["updated_at"].replace("Z", "+00:00"))
-    cutoff = datetime.now(updated_at.tzinfo) - timedelta(hours=24)
-    
+def should_crawl_article(updated_at, cutoff):
     return updated_at > cutoff
-
-def is_article_new(article_id, metadata):
-    """Check if article is new or updated."""
-    if article_id not in metadata:
-        return True  # New article
-    
-    old_updated_at = metadata[article_id].get("updated_at")
-    new_updated_at = article["updated_at"]
-    
-    return old_updated_at != new_updated_at  # Updated if timestamp changed
 
 def get_category(article_id, metadata, is_first, content_hash):
     """Determine if article should go to 'new' or 'updated' folder."""
@@ -117,78 +96,95 @@ def get_category(article_id, metadata, is_first, content_hash):
     # Check if content actually changed by comparing hash
     old_hash = metadata[article_id].get("content_hash")
     if old_hash and old_hash == content_hash:
-        return "updated"  # No change, still mark as updated to preserve
+        return None  # No change, skip processing
     
-    # If no old hash but article exists, mark as updated to add hash
-    if not old_hash:
-        return "updated"
-    
+    # Article have its content changed
     return "updated"
+
+# ===================================================
 
 # Crawl articles
 metadata = load_metadata()
 is_first = is_first_run()
+
 print(f"[CRAWL] First run: {is_first}")
 print(f"[CRAWL] Existing articles in metadata: {len(metadata)}")
 
-url = BASE
-crawled_count = 0
-new_count = 0
-updated_count = 0
-skipped_count = 0
+cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+print(f"[CRAWL] Cutoff time (UTC): {cutoff.isoformat()}")
+# Determine which endpoint to use
 
-while url and crawled_count < 40:
+url = BASE if is_first else f"{BASE}?updated_since={cutoff.isoformat()}"
+
+new_count = updated_count = skipped_count = crawled_count = 0
+stop_crawl = False
+
+while url and not stop_crawl:
     res = requests.get(url).json()
+    
+    # Debug: check response structure
+    if "articles" not in res:
+        print(f"[ERROR] Unexpected response format: {res}")
+        break
     
     for article in res["articles"]:
         if article["draft"]:
             continue
         
+        updated_at = datetime.fromisoformat(
+            article["updated_at"].replace("Z", "+00:00")
+        )
+
+        if not is_first and updated_at <= cutoff or crawled_count >= 40:
+            print(f"[STOP] Reached articles older than cutoff. Stopping crawl.")
+            stop_crawl = True
+            break
+
         # Check if we should crawl this article
-        if not should_crawl_article(article, is_first):
-            # Only count as skipped if within first 40 articles encountered
-            if crawled_count + skipped_count < 40:
-                skipped_count += 1
+        if not should_crawl_article(updated_at, cutoff) and not is_first:
+            skipped_count += 1
             continue
         
         article_id = article["id"]
         
-        # Process article
-        html = article["body"]
-        soup = BeautifulSoup(html, "html.parser")
+        # Process article content
+        soup = BeautifulSoup(article["body"], "html.parser")
         
-        # Remove navigation, ads, scripts, styles, and common unwanted elements
+        # Remove navigation, ads, scripts, styles, noscript, and common unwanted elements
         for tag in soup(["nav", "aside", "script", "style", "noscript"]):
             tag.decompose()
         
         # Remove divs/sections commonly used for ads
-        for tag in soup.find_all(class_=lambda x: x and any(ad in x.lower() for ad in ['ad', 'advertisement', 'banner', 'sidebar', 'related'])):
+        for tag in soup.find_all(
+            class_=lambda x: x and any(
+                ad in x.lower() for ad in 
+                ['ad', 'advertisement', 'banner', 'sidebar', 'related']
+            )
+        ):
             tag.decompose()
         
-        # Convert HTML to Markdown
+        # Convert to markdown, normalize whitespace, and compute content hash
         markdown_content = md(str(soup), heading_style="underlined")
-        
-        # Clean up excessive whitespace
-        markdown_content = re.sub(r'\n{3,}', '\n\n', markdown_content).strip()
-        
-        # Calculate content hash
-        content_hash = get_content_hash(markdown_content)
+        normalized_content = re.sub(r'\s+', ' ', markdown_content).strip()
+        content_hash = get_content_hash(normalized_content)
         
         # Determine category
         category = get_category(article_id, metadata, is_first, content_hash)
+        
+        # Skip if no changes detected
+        if category is None:
+            skipped_count += 1
+            continue
         
         # Save to category folder
         slug = slugify(article["title"])
         path = os.path.join(OUT, category, f"{slug}.md")
         
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        
         with open(path, "w", encoding="utf-8") as f:
-            # Write header and source URL at TOP (ensures it's preserved during chunking)
+            # Write header and source URL at TOP
             f.write(f"# {article['title']}\n")
             f.write(f"**Source:** {article['html_url']}\n\n")
-            f.write(markdown_content)
+            f.write(normalized_content)
         
     # Update metadata
         metadata[article_id] = {
@@ -201,18 +197,15 @@ while url and crawled_count < 40:
             "openai_file_id": metadata.get(article_id, {}).get("openai_file_id")  # Preserve existing file ID
         }
         
-        print(f"  [SAVED] Article {article_id}: {article['title']}")
-        
+        crawled_count += 1
         if category == "new":
             new_count += 1
         else:
             updated_count += 1
-        
-        crawled_count += 1
-        if crawled_count >= 40:
-            break
     
-    url = res.get("next_page") if crawled_count < 40 else None
+        print(f"  [SAVED] Article {article_id}: {article['title']}")
+
+    url = res.get("next_page")
 
 # Save metadata
 save_metadata(metadata)

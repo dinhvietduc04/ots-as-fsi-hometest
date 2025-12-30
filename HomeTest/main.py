@@ -114,17 +114,23 @@ def run_uploader():
             timeout=600  # 10 minute timeout
         )
         
+        # Always print stdout (includes progress messages)
+        print(result.stdout)
+        
         if result.returncode != 0:
-            print(f"[ERROR] Upload failed: {result.stderr}")
+            print(f"[ERROR] Upload failed!")
+            if result.stderr:
+                print(f"[STDERR]:\n{result.stderr}")
             return False
         
-        print(result.stdout)
         return True
     except subprocess.TimeoutExpired:
         print("[ERROR] Upload timeout after 10 minutes")
         return False
     except Exception as e:
         print(f"[ERROR] Upload error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():

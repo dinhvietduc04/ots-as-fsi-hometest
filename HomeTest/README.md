@@ -5,33 +5,51 @@ Daily scraper + delta detector + vector store uploader.
 ## Setup
 
 ```bash
-# 1. Install dependencies
+# 1. Create virtual environment
+python -m venv .venv
+
+# 2. Activate virtual environment
+.venv\Scripts\activate.bat    # Windows CMD
+# or
+.venv\Scripts\Activate.ps1    # Windows PowerShell
+
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 2. Configure API key (copy from .env.sample)
-cp .env.sample .env
-# Edit .env and add your OpenAI API key
+# 4. Configure environment variables
+# Copy and edit .env with:
+# - OPENAI_API_KEY (from OpenAI)
+# - MONGO_USERNAME (from DigitalOcean MongoDB)
+# - MONGO_PASSWORD (from DigitalOcean MongoDB)
+# - MONGO_HOST (mongodb+srv://...)
+# - MONGO_DATABASE (your database name)
 ```
 
 ## Run Locally
 
+**Step 1: Crawl articles from Zendesk**
 ```bash
-python main.py
+python scripts/data-crawl.py
 ```
-
-**Output:**
-- Scrapes articles from OptiSign Help Center
+- Fetches articles from OptiSign Zendesk Help Center
 - Detects new/updated articles (hash-based)
-- Uploads only changed files to OpenAI Vector Store
-- Logs results to `log/delta_log.json`
+- Saves metadata to MongoDB
+
+**Step 2: Upload to OpenAI Vector Store**
+```bash
+python scripts/upload_to_vector_store.py
+```
+- Reads metadata from MongoDB
+- Uploads articles to OpenAI Vector Store
+- Stores file IDs in MongoDB
+- Logs results to `log/upload_log_*.json`
 
 **Example output:**
 ```
 [SUMMARY]
-  - Added:   2 articles
-  - Updated: 1 articles
-  - Skipped: 37 articles
-  - Uploaded: 3 files
+  - New articles:     2
+  - Updated articles: 1
+  - Total uploaded:   3
 ```
 
 ## Docker
@@ -39,9 +57,12 @@ python main.py
 **Local testing (with volume mounts to see output):**
 ```bash
 docker build -t optisign-scraper:latest .
-docker run -e OPENAI_API_KEY=sk-xxx \
-  -v $(pwd)/articles:/app/articles \
-  -v $(pwd)/log:/app/log \
+
+$env:OPENAI_API_KEY = (Get-Content .env | Select-String "OPENAI_API_KEY=").ToString().Split("=")[1]
+docker run --rm `
+  -v "${PWD}\articles:/app/articles" `
+  -v "${PWD}\log:/app/log" `
+  -e OPENAI_API_KEY=$env:OPENAI_API_KEY `
   optisign-scraper:latest
 ```
 

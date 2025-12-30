@@ -34,7 +34,7 @@ wheels/
 *.swp
 *.swo
 *~
-
+../.vscode/
 # OS
 .DS_Store
 Thumbs.db

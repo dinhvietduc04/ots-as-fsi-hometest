@@ -10,11 +10,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p log articles articles-jsonl
+RUN mkdir -p /app/articles/new /app/articles/updated /app/log
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-# Note: OPENAI_API_KEY must be set in DigitalOcean App Platform settings
+# Note: The following must be set in DigitalOcean App Platform settings:
+# - OPENAI_API_KEY
+# - MONGO_USERNAME
+# - MONGO_PASSWORD
+# - MONGO_HOST
+# - MONGO_DATABASE
 
 # Run the main job
 ENTRYPOINT ["python", "main.py"]

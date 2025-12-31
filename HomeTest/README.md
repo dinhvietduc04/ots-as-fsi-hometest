@@ -71,6 +71,8 @@ docker run --rm --env-file .env registry.digitalocean.com/your-registry/scraper:
 
 All logs are stored in MongoDB `upload_logs` collection with timestamps for historical tracking and querying.
 
+**Latest Job Logs:** [https://daily-job-bucket.nyc3.digitaloceanspaces.com/logs/job_logs_latest.json](https://daily-job-bucket.nyc3.digitaloceanspaces.com/logs/job_logs_latest.json)
+
 ## How It Works
 
 1. **Data Crawling** (`data-crawl.py`): Fetches articles from OptiSign Zendesk API

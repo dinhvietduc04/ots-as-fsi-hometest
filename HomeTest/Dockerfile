@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/articles/new /app/articles/updated /app/log
+RUN mkdir -p /app/articles/new /app/articles/updated
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

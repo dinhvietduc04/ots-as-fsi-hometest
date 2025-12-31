@@ -81,6 +81,18 @@ def save_metadata(metadata):
         print(f"[ERROR] Failed to save metadata to MongoDB: {e}")
         raise
 
+def save_upload_log_to_mongo(log_data):
+    """Save upload log to MongoDB."""
+    try:
+        db = get_mongo_client()
+        collection = db["upload_logs"]
+        
+        # Insert log with timestamp as unique identifier
+        collection.insert_one(log_data)
+        print(f"[+] Upload log saved to MongoDB")
+    except Exception as e:
+        print(f"[WARNING] Failed to save upload log to MongoDB: {e}")
+
 def get_content_hash(content):
     """Get SHA256 hash of content."""
     return hashlib.sha256(content.encode()).hexdigest()
@@ -430,8 +442,7 @@ def upload_articles():
     if all_chunks_metadata:
         save_chunks_metadata(all_chunks_metadata)
     
-    # Log results
-    os.makedirs(LOG_DIR, exist_ok=True)
+    # Log results to MongoDB
     log_data = {
         "vector_store_id": vector_store_id,
         "timestamp": __import__('datetime').datetime.now().isoformat(),
@@ -440,11 +451,7 @@ def upload_articles():
         "total_uploaded": new_uploaded + updated_uploaded
     }
     
-    # Archive with timestamp for historical tracking
-    timestamp = __import__('datetime').datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    archived_log_path = os.path.join(LOG_DIR, f"upload_log_{timestamp}.json")
-    with open(archived_log_path, "w") as f:
-        json.dump(log_data, f, indent=2)
+    save_upload_log_to_mongo(log_data)
     
     print(f"\n{'='*50}")
     print(f"[UPLOAD SUMMARY]")

@@ -4,74 +4,9 @@ Main orchestrator for OptiSign daily scraper job.
 Handles scraping, delta detection, and vector store uploads.
 """
 
-import os
-import json
-import hashlib
 import subprocess
 import sys
-from pathlib import Path
 from datetime import datetime
-
-ARTICLES_DIR = "articles"
-HASHES_FILE = "log/article_hashes.json"
-DELTA_LOG_FILE = "log/delta_log.json"
-
-def get_file_hash(filepath):
-    """Calculate SHA256 hash of file content."""
-    sha256_hash = hashlib.sha256()
-    with open(filepath, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest()
-
-def load_hashes():
-    """Load previous article hashes from disk."""
-    if os.path.exists(HASHES_FILE):
-        with open(HASHES_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_hashes(hashes):
-    """Save current article hashes to disk."""
-    os.makedirs(os.path.dirname(HASHES_FILE), exist_ok=True)
-    with open(HASHES_FILE, "w") as f:
-        json.dump(hashes, f, indent=2)
-
-def detect_delta():
-    """
-    Detect new and updated articles.
-    Returns: (added, updated, skipped, current_hashes)
-    """
-    old_hashes = load_hashes()
-    current_hashes = {}
-    added = []
-    updated = []
-    skipped = []
-    
-    # Get all markdown files
-    md_files = sorted(Path(ARTICLES_DIR).glob("*.md"))
-    
-    if not md_files:
-        print(f"⚠ No articles found in {ARTICLES_DIR}")
-        return [], [], [], {}
-    
-    print(f"\n[DELTA] Detecting changes across {len(md_files)} articles...")
-    
-    for md_file in md_files:
-        filename = md_file.name
-        current_hash = get_file_hash(md_file)
-        current_hashes[filename] = current_hash
-        
-        if filename not in old_hashes:
-            added.append(filename)
-            print(f"  [NEW] {filename}")
-        elif old_hashes[filename] != current_hash:
-            updated.append(filename)
-            print(f"  [UPDATED] {filename}")
-        else:
-            skipped.append(filename)
-    
-    return added, updated, skipped, current_hashes
 
 def run_scraper():
     """Execute data-crawl.py to fetch articles."""
@@ -155,7 +90,6 @@ def main():
     print("[SUCCESS] JOB COMPLETED SUCCESSFULLY")
     print("="*60)
     print(f"[TIME] Duration: {duration:.1f} seconds")
-    print(f"[LOG] Check log/upload_log.json for upload summary")
     print("="*60 + "\n")
     
     return True

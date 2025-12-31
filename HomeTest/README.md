@@ -1,6 +1,6 @@
 # OptiSign Help Center Vector Store
 
-Daily scraper + delta detector + vector store uploader.
+Daily scraper and vector store uploader for OptiSign Help Center.
 
 ![OptiSign Project AI Response](./assets/result.png)
 
@@ -34,7 +34,7 @@ pip install -r requirements.txt
 python scripts/data-crawl.py
 ```
 - Fetches articles from OptiSign Zendesk Help Center
-- Detects new/updated articles (hash-based)
+- Detects new/updated articles using content hashing
 - Saves metadata to MongoDB
 
 **Step 2: Upload to OpenAI Vector Store**
@@ -44,7 +44,7 @@ python scripts/upload_to_vector_store.py
 - Reads metadata from MongoDB
 - Uploads articles to OpenAI Vector Store
 - Stores file IDs in MongoDB
-- Logs results to `log/upload_log_*.json`
+- Logs results to MongoDB `upload_logs` collection
 
 **Example output:**
 ```
@@ -56,51 +56,33 @@ python scripts/upload_to_vector_store.py
 
 ## Docker
 
-**Local testing (with volume mounts to see output):**
+**Local testing:**
 ```bash
 docker build -t optisign-scraper:latest .
-
-$env:OPENAI_API_KEY = (Get-Content .env | Select-String "OPENAI_API_KEY=").ToString().Split("=")[1]
-docker run --rm `
-  -v "${PWD}\articles:/app/articles" `
-  -v "${PWD}\log:/app/log" `
-  -e OPENAI_API_KEY=$env:OPENAI_API_KEY `
-  optisign-scraper:latest
+docker run --rm --env-file .env optisign-scraper:latest
 ```
 
 **Production (on DigitalOcean):**
 ```bash
-docker run -e OPENAI_API_KEY=sk-xxx \
-  -v /var/optisign-data/articles:/app/articles \
-  -v /var/optisign-data/log:/app/log \
-  registry.digitalocean.com/your-registry/scraper:latest
+docker run --rm --env-file .env registry.digitalocean.com/your-registry/scraper:latest
 ```
 
-## Daily Job Logs
+## Logs
 
-**Local:** Check `log/delta_log.json` after running `python main.py`
-
-**Production (DigitalOcean):** See [DEPLOYMENT.md](DEPLOYMENT.md) for setup
-```bash
-# Last 20 runs
-tail -20 /var/optisign-data/cron.log
-
-# Latest delta summary
-cat /var/optisign-data/log/delta_log.json
-```
+All logs are stored in MongoDB `upload_logs` collection with timestamps for historical tracking and querying.
 
 ## How It Works
 
-1. **Data Crawling** (`data-crawl.py`): Fetches ≤40 articles from OptiSign Zendesk API
-2. **Delta Detection** (`main.py`): Compares hashes, identifies new/updated articles
-3. **Vector Store Upload** (`upload_to_vector_store.py`): Uploads only changed files to OpenAI
-4. **Daily Scheduling**: Runs automatically at **9:00 AM UTC+7 (Bangkok time)** once per day on DigitalOcean
+1. **Data Crawling** (`data-crawl.py`): Fetches articles from OptiSign Zendesk API
+2. **Delta Detection**: Uses content hashing to identify new/updated articles
+3. **Vector Store Upload** (`upload_to_vector_store.py`): Uploads changed files to OpenAI Vector Store
+4. **MongoDB Tracking**: Stores metadata, file IDs, and logs in MongoDB for persistence and querying
 
 ## Using in OpenAI Playground
 
 1. Go to [platform.openai.com/playground](https://platform.openai.com/playground)
 2. Create new Assistant
-3. In Files section, attach Vector Store ID from `log/upload_log.json`
+3. In Files section, attach the Vector Store ID (from MongoDB `articles_metadata` collection)
 4. Set system prompt and test with questions like "How do I add a YouTube video?"
 
 ## Configuration

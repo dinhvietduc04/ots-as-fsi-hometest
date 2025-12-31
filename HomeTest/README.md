@@ -2,6 +2,8 @@
 
 Daily scraper + delta detector + vector store uploader.
 
+![OptiSign Project AI Response](./assets/result.png)
+
 ## Setup
 
 ```bash
@@ -106,4 +108,3 @@ cat /var/optisign-data/log/delta_log.json
 - **Chunk Size:** 1000 characters (semantic boundaries)
 - **Overlap:** 150 characters (maintains context)
 - **Vector Store:** "optisign-help-center"
-
